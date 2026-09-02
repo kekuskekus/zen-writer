@@ -8,7 +8,9 @@ on:
 
 jobs:
   windows:
-    runs-on: windows-latest
+    # windows-latest may point at a newer image without the VS 2022
+    # generator required by the selected Qt MSVC package.
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v5
 
