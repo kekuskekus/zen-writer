@@ -49,7 +49,7 @@ public:
     explicit SpellDictionary(const QString& language)
     {
         Microsoft::WRL::ComPtr<ISpellCheckerFactory> factory;
-        if (FAILED(CoCreateInstance(CLSID_SpellCheckerFactory, nullptr,
+        if (FAILED(CoCreateInstance(__uuidof(SpellCheckerFactory), nullptr,
                                     CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) {
             return;
         }

@@ -39,7 +39,7 @@ endif()
 
 if(WIN32)
     target_compile_definitions(zen-writer PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-    target_link_libraries(zen-writer PRIVATE ole32 uuid)
+    target_link_libraries(zen-writer PRIVATE ole32)
     set_target_properties(zen-writer PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
