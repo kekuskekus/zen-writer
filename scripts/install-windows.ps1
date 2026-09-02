@@ -36,4 +36,3 @@ if (-not $NoAutostart) {
 
 $arguments = if ($Windowed) { '--windowed' } else { '--fullscreen' }
 Start-Process -FilePath $executable -ArgumentList $arguments
-

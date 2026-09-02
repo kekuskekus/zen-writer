@@ -20,19 +20,19 @@ jobs:
           cache: true
 
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 
       - name: Build
-        run: cmake --build build
+        run: cmake --build build --config Release
 
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        run: ctest --test-dir build -C Release --output-on-failure
 
       - name: Package
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path package\ZenWriter | Out-Null
-          Copy-Item build\zen-writer.exe package\ZenWriter\
+          Copy-Item build\Release\zen-writer.exe package\ZenWriter\
           Copy-Item scripts\install-windows.ps1 package\ZenWriter\Install-ZenWriter.ps1
           Copy-Item README.md package\ZenWriter\README.md
           windeployqt --release --no-translations package\ZenWriter\zen-writer.exe
@@ -44,4 +44,3 @@ jobs:
           name: ZenWriter-Windows-x64
           path: ZenWriter-Windows-x64.zip
           archive: false
-
