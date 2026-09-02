@@ -31,8 +31,16 @@ target_link_libraries(zen-writer PRIVATE
 )
 
 if(HUNSPELL_FOUND)
-    target_compile_definitions(zen-writer PRIVATE ZEN_WRITER_HAS_HUNSPELL=1)
-    target_link_libraries(zen-writer PRIVATE PkgConfig::HUNSPELL)
+    if(NOT WIN32)
+        target_compile_definitions(zen-writer PRIVATE ZEN_WRITER_HAS_HUNSPELL=1)
+        target_link_libraries(zen-writer PRIVATE PkgConfig::HUNSPELL)
+    endif()
+endif()
+
+if(WIN32)
+    target_compile_definitions(zen-writer PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(zen-writer PRIVATE ole32)
+    set_target_properties(zen-writer PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
 target_compile_definitions(zen-writer PRIVATE

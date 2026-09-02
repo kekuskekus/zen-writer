@@ -913,8 +913,15 @@ void MainWindow::requestPowerOff()
         return;
     }
     m_settings.sync();
-    if (!QProcess::startDetached(QStringLiteral("systemctl"),
-                                 {QStringLiteral("poweroff")})) {
+#ifdef Q_OS_WIN
+    const bool started = QProcess::startDetached(
+        QStringLiteral("shutdown.exe"),
+        {QStringLiteral("/s"), QStringLiteral("/t"), QStringLiteral("0")});
+#else
+    const bool started = QProcess::startDetached(
+        QStringLiteral("systemctl"), {QStringLiteral("poweroff")});
+#endif
+    if (!started) {
         QMessageBox::critical(this, QStringLiteral("Zen Writer"),
                               QStringLiteral("Не удалось запустить безопасное выключение."));
     }

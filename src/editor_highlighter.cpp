@@ -1,19 +1,91 @@
 #include "editor_highlighter.h"
 
+#include <QByteArray>
 #include <QDir>
 #include <QFileInfo>
 #include <QFont>
 #include <QRegularExpression>
 #include <QTextCharFormat>
 
-#ifdef ZEN_WRITER_HAS_HUNSPELL
+#ifdef Q_OS_WIN
+#include <spellcheck.h>
+#include <windows.h>
+#include <wrl/client.h>
+#elif defined(ZEN_WRITER_HAS_HUNSPELL)
 #include <hunspell.hxx>
+#endif
+
+#ifdef Q_OS_WIN
+namespace {
+
+class ComApartment final
+{
+public:
+    ComApartment()
+        : m_result(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))
+    {
+    }
+
+    ~ComApartment()
+    {
+        if (SUCCEEDED(m_result)) {
+            CoUninitialize();
+        }
+    }
+
+private:
+    HRESULT m_result;
+};
+
+ComApartment windowsComApartment;
+
+} // namespace
 #endif
 
 class SpellDictionary
 {
 public:
-#ifdef ZEN_WRITER_HAS_HUNSPELL
+#ifdef Q_OS_WIN
+    explicit SpellDictionary(const QString& language)
+    {
+        Microsoft::WRL::ComPtr<ISpellCheckerFactory> factory;
+        if (FAILED(CoCreateInstance(CLSID_SpellCheckerFactory, nullptr,
+                                    CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) {
+            return;
+        }
+
+        BOOL supported = FALSE;
+        const auto locale = reinterpret_cast<const wchar_t*>(language.utf16());
+        if (FAILED(factory->IsSupported(locale, &supported)) || !supported) {
+            return;
+        }
+        factory->CreateSpellChecker(locale, m_spellChecker.GetAddressOf());
+    }
+
+    bool isAvailable() const
+    {
+        return m_spellChecker.Get() != nullptr;
+    }
+
+    bool contains(const QString& word)
+    {
+        if (!m_spellChecker) {
+            return true;
+        }
+
+        Microsoft::WRL::ComPtr<IEnumSpellingError> errors;
+        const auto text = reinterpret_cast<const wchar_t*>(word.utf16());
+        if (FAILED(m_spellChecker->Check(text, errors.GetAddressOf())) || !errors) {
+            return true;
+        }
+
+        Microsoft::WRL::ComPtr<ISpellingError> error;
+        return errors->Next(error.GetAddressOf()) == S_FALSE;
+    }
+
+private:
+    Microsoft::WRL::ComPtr<ISpellChecker> m_spellChecker;
+#elif defined(ZEN_WRITER_HAS_HUNSPELL)
     explicit SpellDictionary(const QString& basePath)
         : hunspell((basePath + QStringLiteral(".aff")).toUtf8().constData(),
                    (basePath + QStringLiteral(".dic")).toUtf8().constData())
@@ -22,14 +94,17 @@ public:
 
     bool contains(const QString& word)
     {
-        return hunspell.spell(word.toUtf8().constData()) != 0;
+        return hunspell.spell(word.toUtf8().toStdString());
     }
+
+    bool isAvailable() const { return true; }
 
 private:
     Hunspell hunspell;
 #else
     explicit SpellDictionary(const QString&) {}
     bool contains(const QString&) { return true; }
+    bool isAvailable() const { return false; }
 #endif
 };
 
@@ -61,7 +136,14 @@ void EditorHighlighter::setDarkTheme(bool dark)
 
 void EditorHighlighter::loadDictionaries()
 {
-#ifdef ZEN_WRITER_HAS_HUNSPELL
+#ifdef Q_OS_WIN
+    for (const QString& language : {QStringLiteral("ru-RU"), QStringLiteral("en-US")}) {
+        auto dictionary = std::make_unique<SpellDictionary>(language);
+        if (dictionary->isAvailable()) {
+            m_dictionaries.push_back(std::move(dictionary));
+        }
+    }
+#elif defined(ZEN_WRITER_HAS_HUNSPELL)
     const QStringList roots = {
         QStringLiteral("/usr/share/hunspell"),
         QStringLiteral("/usr/share/myspell/dicts"),
@@ -78,7 +160,10 @@ void EditorHighlighter::loadDictionaries()
             const QString base = QDir(root).filePath(name);
             if (QFileInfo::exists(base + QStringLiteral(".aff"))
                 && QFileInfo::exists(base + QStringLiteral(".dic"))) {
-                m_dictionaries.push_back(std::make_unique<SpellDictionary>(base));
+                auto dictionary = std::make_unique<SpellDictionary>(base);
+                if (dictionary->isAvailable()) {
+                    m_dictionaries.push_back(std::move(dictionary));
+                }
             }
         }
     }

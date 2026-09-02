@@ -1,0 +1,47 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path package\ZenWriter | Out-Null
+          Copy-Item build\zen-writer.exe package\ZenWriter\
+          Copy-Item scripts\install-windows.ps1 package\ZenWriter\Install-ZenWriter.ps1
+          Copy-Item README.md package\ZenWriter\README.md
+          windeployqt --release --no-translations package\ZenWriter\zen-writer.exe
+          Compress-Archive -Path package\ZenWriter -DestinationPath ZenWriter-Windows-x64.zip
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v7
+        with:
+          name: ZenWriter-Windows-x64
+          path: ZenWriter-Windows-x64.zip
+          archive: false
+
