@@ -15,6 +15,7 @@ public:
 
     void setSpellCheckEnabled(bool enabled);
     void setDarkTheme(bool dark);
+    void setMatrixTheme(bool matrix);
 
 protected:
     void highlightBlock(const QString& text) override;
@@ -25,5 +26,6 @@ private:
 
     bool m_spellCheckEnabled = true;
     bool m_darkTheme = true;
+    bool m_matrixTheme = false;
     std::vector<std::unique_ptr<SpellDictionary>> m_dictionaries;
 };

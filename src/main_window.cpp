@@ -17,12 +17,15 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontComboBox>
+#include <QFontDatabase>
 #include <QFormLayout>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QInputDialog>
+#include <QKeyCombination>
 #include <QLabel>
 #include <QKeySequence>
+#include <QKeySequenceEdit>
 #include <QLineEdit>
 #include <QListWidget>
 #include <QMessageBox>
@@ -31,6 +34,8 @@
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QPushButton>
+#include <QRandomGenerator>
+#include <QResizeEvent>
 #include <QSaveFile>
 #include <QScrollBar>
 #include <QSpinBox>
@@ -46,7 +51,9 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <array>
 #include <functional>
+#include <utility>
 
 class BackgroundWidget final : public QWidget
 {
@@ -54,6 +61,14 @@ public:
     explicit BackgroundWidget(QWidget* parent = nullptr)
         : QWidget(parent)
     {
+        m_matrixFont = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+        m_matrixFont.setPixelSize(MatrixCellSize - 2);
+        m_matrixFont.setBold(true);
+        m_matrixTimer.setInterval(100);
+        m_matrixTimer.setTimerType(Qt::CoarseTimer);
+        connect(&m_matrixTimer, &QTimer::timeout, this, [this] {
+            advanceMatrix();
+        });
     }
 
     void setBackground(const QString& path, const QColor& fallback)
@@ -63,26 +78,126 @@ public:
         update();
     }
 
+    void setMatrixEnabled(bool enabled)
+    {
+        if (m_matrixEnabled == enabled) {
+            return;
+        }
+        m_matrixEnabled = enabled;
+        if (enabled) {
+            resetMatrix();
+            m_matrixTimer.start();
+        } else {
+            m_matrixTimer.stop();
+            m_matrixDrops.clear();
+        }
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent* event) override
     {
         Q_UNUSED(event)
         QPainter painter(this);
         painter.fillRect(rect(), m_fallback);
-        if (m_pixmap.isNull()) {
+        if (!m_pixmap.isNull()) {
+            const QPixmap scaled = m_pixmap.scaled(size(), Qt::KeepAspectRatioByExpanding,
+                                                   Qt::SmoothTransformation);
+            const QPoint origin((width() - scaled.width()) / 2,
+                                (height() - scaled.height()) / 2);
+            painter.drawPixmap(origin, scaled);
+        }
+
+        if (!m_matrixEnabled) {
             return;
         }
 
-        const QPixmap scaled = m_pixmap.scaled(size(), Qt::KeepAspectRatioByExpanding,
-                                               Qt::SmoothTransformation);
-        const QPoint origin((width() - scaled.width()) / 2,
-                            (height() - scaled.height()) / 2);
-        painter.drawPixmap(origin, scaled);
+        painter.fillRect(rect(), QColor(0, 5, 1, 105));
+        painter.setFont(m_matrixFont);
+
+        static const QString glyphs = QStringLiteral(
+            "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ@#$%&*+-<>[]{}");
+        for (qsizetype column = 0; column < m_matrixDrops.size(); ++column) {
+            const MatrixDrop& drop = m_matrixDrops.at(column);
+            for (int trail = 0; trail <= drop.trail; ++trail) {
+                const int row = drop.row - trail;
+                const int y = (row + 1) * MatrixCellSize;
+                if (y < 0 || y > height() + MatrixCellSize) {
+                    continue;
+                }
+
+                const int glyphIndex = std::abs(
+                    (static_cast<int>(column) * 17) + (row * 13) + m_matrixFrame)
+                    % glyphs.size();
+                if (trail == 0) {
+                    painter.setPen(QColor(210, 255, 218, 235));
+                } else {
+                    const int alpha = std::max(18, 175 - (trail * 15));
+                    painter.setPen(QColor(28, 255, 83, alpha));
+                }
+                painter.drawText(static_cast<int>(column) * MatrixCellSize, y,
+                                 QString(glyphs.at(glyphIndex)));
+            }
+        }
+
+        painter.setPen(QColor(0, 0, 0, 22));
+        for (int y = 0; y < height(); y += 5) {
+            painter.drawLine(0, y, width(), y);
+        }
+    }
+
+    void resizeEvent(QResizeEvent* event) override
+    {
+        QWidget::resizeEvent(event);
+        if (m_matrixEnabled) {
+            resetMatrix();
+        }
     }
 
 private:
+    struct MatrixDrop
+    {
+        int row = 0;
+        int speed = 1;
+        int trail = 8;
+    };
+
+    void resetMatrix()
+    {
+        const int columns = std::max(1, (width() / MatrixCellSize) + 1);
+        const int rows = std::max(1, (height() / MatrixCellSize) + 1);
+        m_matrixDrops.resize(columns);
+        for (MatrixDrop& drop : m_matrixDrops) {
+            drop.row = -QRandomGenerator::global()->bounded(rows + 1);
+            drop.speed = 1 + QRandomGenerator::global()->bounded(2);
+            drop.trail = 6 + QRandomGenerator::global()->bounded(10);
+        }
+    }
+
+    void advanceMatrix()
+    {
+        const int rows = std::max(1, (height() / MatrixCellSize) + 1);
+        for (MatrixDrop& drop : m_matrixDrops) {
+            drop.row += drop.speed;
+            if (drop.row - drop.trail > rows
+                && QRandomGenerator::global()->bounded(100) < 35) {
+                drop.row = -QRandomGenerator::global()->bounded(rows + 1);
+                drop.speed = 1 + QRandomGenerator::global()->bounded(2);
+                drop.trail = 6 + QRandomGenerator::global()->bounded(10);
+            }
+        }
+        m_matrixFrame = (m_matrixFrame + 1) % 1000000;
+        update();
+    }
+
+    static constexpr int MatrixCellSize = 18;
     QColor m_fallback = QColor(QStringLiteral("#16191d"));
     QPixmap m_pixmap;
+    QFont m_matrixFont;
+    QTimer m_matrixTimer;
+    QVector<MatrixDrop> m_matrixDrops;
+    int m_matrixFrame = 0;
+    bool m_matrixEnabled = false;
 };
 
 namespace {
@@ -90,6 +205,57 @@ namespace {
 constexpr int AutosaveDelayMs = 1500;
 constexpr int BackupIntervalSeconds = 300;
 constexpr int BackupsToKeep = 50;
+
+const auto& configurableShortcutDefaults()
+{
+    static const auto defaults = std::array{
+        std::pair{QStringLiteral("shortcuts/save"), QKeySequence(QStringLiteral("Ctrl+S"))},
+        std::pair{QStringLiteral("shortcuts/find"), QKeySequence(QStringLiteral("Ctrl+F"))},
+        std::pair{QStringLiteral("shortcuts/quit"), QKeySequence(QStringLiteral("Ctrl+Q"))},
+    };
+    return defaults;
+}
+
+const auto& fixedShortcutBindings()
+{
+    static const auto bindings = std::array{
+        std::pair{QStringLiteral("Список файлов"), QKeySequence(QStringLiteral("Ctrl+O"))},
+        std::pair{QStringLiteral("Новый текст"), QKeySequence(QKeySequence::New)},
+        std::pair{QStringLiteral("Выбрать папку"), QKeySequence(QStringLiteral("Ctrl+Shift+O"))},
+        std::pair{QStringLiteral("Настройки"), QKeySequence(QStringLiteral("Ctrl+,"))},
+        std::pair{QStringLiteral("Таймер"), QKeySequence(QStringLiteral("Ctrl+T"))},
+        std::pair{QStringLiteral("Полный экран"), QKeySequence(Qt::Key_F11)},
+        std::pair{QStringLiteral("Выключение"), QKeySequence(QStringLiteral("Ctrl+Shift+Q"))},
+        std::pair{QStringLiteral("Печатная машинка"), QKeySequence(QStringLiteral("Ctrl+Alt+T"))},
+        std::pair{QStringLiteral("Орфография"), QKeySequence(QStringLiteral("Ctrl+Alt+S"))},
+        std::pair{QStringLiteral("Matrix-тема"), QKeySequence(QStringLiteral("Ctrl+Alt+M"))},
+    };
+    return bindings;
+}
+
+QKeySequence configuredShortcut(const QSettings& settings, const QString& key,
+                                const QKeySequence& fallback)
+{
+    const QKeySequence sequence = QKeySequence::fromString(
+        settings.value(key, fallback.toString(QKeySequence::PortableText)).toString(),
+        QKeySequence::PortableText);
+    return sequence.isEmpty() ? fallback : sequence;
+}
+
+bool isSafeEditorShortcut(const QKeySequence& sequence)
+{
+    if (sequence.isEmpty() || sequence.count() != 1) {
+        return false;
+    }
+    const QKeyCombination combination = sequence[0];
+    const Qt::Key key = combination.key();
+    const Qt::KeyboardModifiers modifiers = combination.keyboardModifiers();
+    const bool hasCommandModifier = modifiers.testFlag(Qt::ControlModifier)
+        || modifiers.testFlag(Qt::AltModifier)
+        || modifiers.testFlag(Qt::MetaModifier);
+    return hasCommandModifier
+        || (key >= Qt::Key_F1 && key <= Qt::Key_F35);
+}
 
 QString readableTime(int totalSeconds)
 {
@@ -212,19 +378,36 @@ void MainWindow::setupActions()
               [this] { toggleSidebar(); });
     addAction(QStringLiteral("Новый текст"), QKeySequence::New,
               [this] { createDocument(); });
-    addAction(QStringLiteral("Сохранить"), QKeySequence::Save,
-              [this] { saveCurrentDocument(); });
+    m_saveAction = addAction(QStringLiteral("Сохранить"), QKeySequence::Save,
+                             [this] { saveCurrentDocument(); });
     addAction(QStringLiteral("Выбрать папку"), QKeySequence(QStringLiteral("Ctrl+Shift+O")),
               [this] { chooseWorkspace(); });
-    addAction(QStringLiteral("Поиск и замена"), QKeySequence::Find,
-              [this] { showFindReplace(); });
+    m_findAction = addAction(QStringLiteral("Поиск и замена"), QKeySequence::Find,
+                             [this] { showFindReplace(); });
     addAction(QStringLiteral("Настройки"), QKeySequence(QStringLiteral("Ctrl+,")),
               [this] { showPreferences(); });
     addAction(QStringLiteral("Таймер"), QKeySequence(QStringLiteral("Ctrl+T")),
               [this] { startWritingTimer(); });
     addAction(QStringLiteral("Полный экран"), QKeySequence(Qt::Key_F11),
               [this] { toggleFullScreen(); });
-    addAction(QStringLiteral("Выход"), QKeySequence::Quit, [this] { close(); });
+    addAction(QStringLiteral("Matrix-тема"), QKeySequence(QStringLiteral("Ctrl+Alt+M")),
+              [this] {
+                  const QString current = m_settings.value(
+                      QStringLiteral("appearance/theme"), QStringLiteral("matrix")).toString();
+                  if (current == QStringLiteral("matrix")) {
+                      m_settings.setValue(
+                          QStringLiteral("appearance/theme"),
+                          m_settings.value(QStringLiteral("appearance/themeBeforeMatrix"),
+                                           QStringLiteral("dark")));
+                  } else {
+                      m_settings.setValue(QStringLiteral("appearance/themeBeforeMatrix"), current);
+                      m_settings.setValue(QStringLiteral("appearance/theme"),
+                                          QStringLiteral("matrix"));
+                  }
+                  applyAppearance();
+              });
+    m_quitAction = addAction(QStringLiteral("Выход"), QKeySequence::Quit,
+                             [this] { close(); });
     addAction(QStringLiteral("Выключить Raspberry Pi"),
               QKeySequence(QStringLiteral("Ctrl+Shift+Q")),
               [this] { requestPowerOff(); });
@@ -250,6 +433,131 @@ void MainWindow::setupActions()
             m_highlighter->setSpellCheckEnabled(enabled);
         });
     m_spellCheckAction->setCheckable(true);
+
+    applyConfiguredShortcuts();
+}
+
+void MainWindow::applyConfiguredShortcuts()
+{
+    const auto& defaults = configurableShortcutDefaults();
+    m_saveAction->setShortcut(configuredShortcut(
+        m_settings, defaults[0].first, defaults[0].second));
+    m_findAction->setShortcut(configuredShortcut(
+        m_settings, defaults[1].first, defaults[1].second));
+    m_quitAction->setShortcut(configuredShortcut(
+        m_settings, defaults[2].first, defaults[2].second));
+}
+
+void MainWindow::showShortcutPreferences()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(QStringLiteral("Горячие клавиши"));
+    dialog.setMinimumWidth(520);
+    auto* rootLayout = new QVBoxLayout(&dialog);
+
+    auto* introduction = new QLabel(
+        QStringLiteral("Нажмите новое сочетание в нужном поле. Изменения сохраняются "
+                       "между запусками Zen Writer."),
+        &dialog);
+    introduction->setWordWrap(true);
+    rootLayout->addWidget(introduction);
+
+    auto* form = new QFormLayout();
+    auto* saveEdit = new QKeySequenceEdit(m_saveAction->shortcut(), &dialog);
+    auto* findEdit = new QKeySequenceEdit(m_findAction->shortcut(), &dialog);
+    auto* quitEdit = new QKeySequenceEdit(m_quitAction->shortcut(), &dialog);
+    form->addRow(QStringLiteral("Сохранить:"), saveEdit);
+    form->addRow(QStringLiteral("Поиск и замена:"), findEdit);
+    form->addRow(QStringLiteral("Выйти:"), quitEdit);
+    rootLayout->addLayout(form);
+
+    QStringList fixedLines;
+    for (const auto& [label, shortcut] : fixedShortcutBindings()) {
+        fixedLines.append(QStringLiteral("%1 — %2")
+                              .arg(shortcut.toString(QKeySequence::NativeText), label));
+    }
+    auto* fixedShortcuts = new QLabel(
+        QStringLiteral("Остальные сочетания фиксированы:\n%1").arg(fixedLines.join(QStringLiteral(" · "))),
+        &dialog);
+    fixedShortcuts->setWordWrap(true);
+    fixedShortcuts->setStyleSheet(QStringLiteral("color: palette(mid);"));
+    rootLayout->addWidget(fixedShortcuts);
+
+    auto* buttons = new QDialogButtonBox(
+        QDialogButtonBox::Save | QDialogButtonBox::Cancel
+            | QDialogButtonBox::RestoreDefaults,
+        &dialog);
+    buttons->button(QDialogButtonBox::Save)->setText(QStringLiteral("Сохранить"));
+    buttons->button(QDialogButtonBox::Cancel)->setText(QStringLiteral("Отмена"));
+    buttons->button(QDialogButtonBox::RestoreDefaults)
+        ->setText(QStringLiteral("По умолчанию"));
+    rootLayout->addWidget(buttons);
+
+    connect(buttons->button(QDialogButtonBox::RestoreDefaults), &QPushButton::clicked,
+            &dialog, [saveEdit, findEdit, quitEdit] {
+                const auto& defaults = configurableShortcutDefaults();
+                saveEdit->setKeySequence(defaults[0].second);
+                findEdit->setKeySequence(defaults[1].second);
+                quitEdit->setKeySequence(defaults[2].second);
+            });
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog,
+            [this, &dialog, saveEdit, findEdit, quitEdit] {
+                const std::array<QString, 3> labels = {
+                    QStringLiteral("Сохранить"),
+                    QStringLiteral("Поиск и замена"),
+                    QStringLiteral("Выйти"),
+                };
+                const std::array<QKeySequence, 3> sequences = {
+                    saveEdit->keySequence(),
+                    findEdit->keySequence(),
+                    quitEdit->keySequence(),
+                };
+
+                for (std::size_t index = 0; index < sequences.size(); ++index) {
+                    if (!isSafeEditorShortcut(sequences[index])) {
+                        QMessageBox::warning(
+                            &dialog, QStringLiteral("Горячие клавиши"),
+                            QStringLiteral("Для «%1» задайте одно сочетание с Ctrl, Alt "
+                                           "или Meta либо клавишу F1–F35.")
+                                .arg(labels[index]));
+                        return;
+                    }
+                    for (std::size_t other = 0; other < index; ++other) {
+                        if (sequences[index] == sequences[other]) {
+                            QMessageBox::warning(
+                                &dialog, QStringLiteral("Горячие клавиши"),
+                                QStringLiteral("«%1» и «%2» не могут использовать %3 одновременно.")
+                                    .arg(labels[other], labels[index],
+                                         sequences[index].toString(QKeySequence::NativeText)));
+                            return;
+                        }
+                    }
+                    for (const auto& [fixedLabel, fixedShortcut] : fixedShortcutBindings()) {
+                        if (sequences[index] == fixedShortcut) {
+                            QMessageBox::warning(
+                                &dialog, QStringLiteral("Горячие клавиши"),
+                                QStringLiteral("%1 уже используется для действия «%2».")
+                                    .arg(sequences[index].toString(QKeySequence::NativeText),
+                                         fixedLabel));
+                            return;
+                        }
+                    }
+                }
+
+                const auto& defaults = configurableShortcutDefaults();
+                for (std::size_t index = 0; index < sequences.size(); ++index) {
+                    m_settings.setValue(
+                        defaults[index].first,
+                        sequences[index].toString(QKeySequence::PortableText));
+                }
+                m_settings.sync();
+                applyConfiguredShortcuts();
+                statusBar()->showMessage(QStringLiteral("Горячие клавиши обновлены"), 2500);
+                dialog.accept();
+            });
+
+    dialog.exec();
 }
 
 void MainWindow::ensureWorkspace()
@@ -737,16 +1045,21 @@ void MainWindow::showPreferences()
     auto* layout = new QFormLayout(&dialog);
 
     auto* theme = new QComboBox(&dialog);
+    theme->addItem(QStringLiteral("Матрица"), QStringLiteral("matrix"));
     theme->addItem(QStringLiteral("Тёмная"), QStringLiteral("dark"));
     theme->addItem(QStringLiteral("Светлая"), QStringLiteral("light"));
     theme->addItem(QStringLiteral("Сепия"), QStringLiteral("sepia"));
     theme->setCurrentIndex(std::max(
         0, theme->findData(m_settings.value(QStringLiteral("appearance/theme"),
-                                             QStringLiteral("dark")))));
+                                             QStringLiteral("matrix")))));
 
     auto* font = new QFontComboBox(&dialog);
-    font->setCurrentFont(QFont(m_settings.value(QStringLiteral("appearance/font"),
-                                               QStringLiteral("Noto Serif")).toString()));
+    QString defaultFont = QStringLiteral("Noto Serif");
+    if (theme->currentData() == QStringLiteral("matrix")) {
+        defaultFont = QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    }
+    font->setCurrentFont(QFont(
+        m_settings.value(QStringLiteral("appearance/font"), defaultFont).toString()));
     auto* fontSize = new QSpinBox(&dialog);
     fontSize->setRange(10, 48);
     fontSize->setValue(m_settings.value(QStringLiteral("appearance/fontSize"), 18).toInt());
@@ -762,6 +1075,9 @@ void MainWindow::showPreferences()
     typewriter->setChecked(m_settings.value(QStringLiteral("editor/typewriter"), true).toBool());
     auto* spellCheck = new QCheckBox(QStringLiteral("Русский и английский"), &dialog);
     spellCheck->setChecked(m_settings.value(QStringLiteral("editor/spellCheck"), true).toBool());
+    auto* shortcutButton = new QPushButton(QStringLiteral("Настроить…"), &dialog);
+    connect(shortcutButton, &QPushButton::clicked, &dialog,
+            [this] { showShortcutPreferences(); });
 
     auto* backgroundRow = new QWidget(&dialog);
     auto* backgroundLayout = new QHBoxLayout(backgroundRow);
@@ -788,6 +1104,7 @@ void MainWindow::showPreferences()
     layout->addRow(QStringLiteral("Фон:"), backgroundRow);
     layout->addRow(QStringLiteral("Печатная машинка:"), typewriter);
     layout->addRow(QStringLiteral("Орфография:"), spellCheck);
+    layout->addRow(QStringLiteral("Горячие клавиши:"), shortcutButton);
 
     auto* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel,
                                          &dialog);
@@ -813,54 +1130,99 @@ void MainWindow::showPreferences()
 void MainWindow::applyAppearance()
 {
     const QString theme = m_settings.value(QStringLiteral("appearance/theme"),
-                                           QStringLiteral("dark")).toString();
-    const bool dark = theme == QStringLiteral("dark");
+                                           QStringLiteral("matrix")).toString();
+    const bool matrix = theme == QStringLiteral("matrix");
+    const bool dark = matrix || theme == QStringLiteral("dark");
     QColor windowColor;
     QColor editorColor;
     QColor textColor;
     QColor mutedColor;
-    if (theme == QStringLiteral("light")) {
+    QString selectionColor;
+    QString borderColor;
+    if (matrix) {
+        windowColor = QColor(QStringLiteral("#010402"));
+        editorColor = QColor(0, 10, 3, 224);
+        textColor = QColor(QStringLiteral("#8cff9a"));
+        mutedColor = QColor(QStringLiteral("#38d760"));
+        selectionColor = QStringLiteral("#135c2b");
+        borderColor = QStringLiteral("#1f8f43");
+    } else if (theme == QStringLiteral("light")) {
         windowColor = QColor(QStringLiteral("#e9ecef"));
         editorColor = QColor(255, 255, 255, 238);
         textColor = QColor(QStringLiteral("#22252a"));
         mutedColor = QColor(QStringLiteral("#5f6670"));
+        selectionColor = QStringLiteral("#9fc7e8");
+        borderColor = QStringLiteral("transparent");
     } else if (theme == QStringLiteral("sepia")) {
         windowColor = QColor(QStringLiteral("#cbbf9f"));
         editorColor = QColor(246, 238, 215, 238);
         textColor = QColor(QStringLiteral("#3d3527"));
         mutedColor = QColor(QStringLiteral("#6f6049"));
+        selectionColor = QStringLiteral("#b9a878");
+        borderColor = QStringLiteral("transparent");
     } else {
         windowColor = QColor(QStringLiteral("#16191d"));
         editorColor = QColor(23, 27, 32, 224);
         textColor = QColor(QStringLiteral("#e6e8eb"));
         mutedColor = QColor(QStringLiteral("#a7adb5"));
+        selectionColor = QStringLiteral("#4f6f8f");
+        borderColor = QStringLiteral("transparent");
     }
 
-    m_background->setBackground(
-        m_settings.value(QStringLiteral("appearance/background")).toString(), windowColor);
-    QFont editorFont(m_settings.value(QStringLiteral("appearance/font"),
-                                      QStringLiteral("Noto Serif")).toString());
+    const QString backgroundPath =
+        m_settings.value(QStringLiteral("appearance/background")).toString();
+    m_background->setBackground(matrix ? QString() : backgroundPath, windowColor);
+    m_background->setMatrixEnabled(matrix);
+
+    QString fontFamily = m_settings.value(QStringLiteral("appearance/font")).toString();
+    if (fontFamily.isEmpty()) {
+        fontFamily = matrix
+            ? QFontDatabase::systemFont(QFontDatabase::FixedFont).family()
+            : QStringLiteral("Noto Serif");
+    }
+    QFont editorFont(fontFamily);
     editorFont.setPointSize(m_settings.value(QStringLiteral("appearance/fontSize"), 18).toInt());
+    editorFont.setStyleHint(matrix ? QFont::Monospace : QFont::AnyStyle);
     m_editor->setFont(editorFont);
     m_editor->setMaximumWidth(
         m_settings.value(QStringLiteral("appearance/editorWidth"), 920).toInt());
-    m_background->setStyleSheet(QStringLiteral(
+    QString centralStyle = QStringLiteral(
         "QPlainTextEdit#writingEditor { background-color: rgba(%1,%2,%3,%4); "
-        "color: %5; selection-background-color: #4f6f8f; padding: 36px; }"
+        "color: %5; selection-background-color: %6; border: 1px solid %7; "
+        "border-radius: 5px; padding: 36px; }"
         "QWidget#fileSidebar { background-color: rgba(%1,%2,%3,235); color: %5; "
-        "border-radius: 8px; }"
+        "border: 1px solid %7; border-radius: 5px; }"
         "QListWidget { background: transparent; color: %5; border: none; }"
+        "QListWidget::item:selected { background: %6; }"
         "QPushButton { padding: 5px; }")
                                .arg(editorColor.red())
                                .arg(editorColor.green())
                                .arg(editorColor.blue())
                                .arg(editorColor.alpha())
-                               .arg(textColor.name()));
-    statusBar()->setStyleSheet(QStringLiteral("color: %1;").arg(mutedColor.name()));
+                               .arg(textColor.name(), selectionColor, borderColor);
+    if (matrix) {
+        centralStyle += QStringLiteral(
+            "QPushButton { color: #74ff8c; background: #061109; "
+            "border: 1px solid #1f8f43; border-radius: 3px; }"
+            "QPushButton:hover { background: #0d2814; }"
+            "QScrollBar { background: #020703; }"
+            "QScrollBar::handle { background: #17652f; }");
+    }
+    m_background->setStyleSheet(centralStyle);
+    statusBar()->setStyleSheet(
+        matrix
+            ? QStringLiteral("color: %1; background: #010402; font-family: monospace; "
+                             "letter-spacing: 1px;").arg(mutedColor.name())
+            : QStringLiteral("color: %1;").arg(mutedColor.name()));
+    setWindowTitle(matrix ? QStringLiteral("ZEN WRITER // MATRIX MODE")
+                          : QStringLiteral("Zen Writer"));
+    m_editor->setPlaceholderText(matrix ? QStringLiteral("> НАЧНИТЕ ВВОД…")
+                                        : QStringLiteral("Начните писать…"));
 
     const bool spell = m_settings.value(QStringLiteral("editor/spellCheck"), true).toBool();
     const bool typewriter = m_settings.value(QStringLiteral("editor/typewriter"), true).toBool();
     m_highlighter->setDarkTheme(dark);
+    m_highlighter->setMatrixTheme(matrix);
     m_highlighter->setSpellCheckEnabled(spell);
     m_spellCheckAction->setChecked(spell);
     m_typewriterAction->setChecked(typewriter);

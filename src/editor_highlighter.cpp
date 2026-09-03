@@ -134,6 +134,15 @@ void EditorHighlighter::setDarkTheme(bool dark)
     rehighlight();
 }
 
+void EditorHighlighter::setMatrixTheme(bool matrix)
+{
+    if (m_matrixTheme == matrix) {
+        return;
+    }
+    m_matrixTheme = matrix;
+    rehighlight();
+}
+
 void EditorHighlighter::loadDictionaries()
 {
 #ifdef Q_OS_WIN
@@ -186,12 +195,18 @@ bool EditorHighlighter::isSpelledCorrectly(const QString& word) const
 
 void EditorHighlighter::highlightBlock(const QString& text)
 {
-    const QColor accent = m_darkTheme ? QColor(QStringLiteral("#9ecbff"))
-                                      : QColor(QStringLiteral("#245b8a"));
-    const QColor subtle = m_darkTheme ? QColor(QStringLiteral("#91a38e"))
-                                      : QColor(QStringLiteral("#557255"));
-    const QColor code = m_darkTheme ? QColor(QStringLiteral("#e8c48a"))
-                                    : QColor(QStringLiteral("#8a521f"));
+    const QColor accent = m_matrixTheme
+        ? QColor(QStringLiteral("#c7ffd0"))
+        : (m_darkTheme ? QColor(QStringLiteral("#9ecbff"))
+                       : QColor(QStringLiteral("#245b8a")));
+    const QColor subtle = m_matrixTheme
+        ? QColor(QStringLiteral("#42c966"))
+        : (m_darkTheme ? QColor(QStringLiteral("#91a38e"))
+                       : QColor(QStringLiteral("#557255")));
+    const QColor code = m_matrixTheme
+        ? QColor(QStringLiteral("#70ff8d"))
+        : (m_darkTheme ? QColor(QStringLiteral("#e8c48a"))
+                       : QColor(QStringLiteral("#8a521f")));
 
     QTextCharFormat headingFormat;
     headingFormat.setForeground(accent);

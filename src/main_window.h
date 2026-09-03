@@ -55,6 +55,8 @@ private:
 
     void showFindReplace();
     void showPreferences();
+    void showShortcutPreferences();
+    void applyConfiguredShortcuts();
     void startWritingTimer();
     void updateWritingTimer();
     void requestPowerOff();
@@ -71,6 +73,9 @@ private:
     QLabel* m_timerLabel = nullptr;
     QTimer* m_saveTimer = nullptr;
     QTimer* m_writingTimer = nullptr;
+    QAction* m_saveAction = nullptr;
+    QAction* m_findAction = nullptr;
+    QAction* m_quitAction = nullptr;
     QAction* m_typewriterAction = nullptr;
     QAction* m_spellCheckAction = nullptr;
 
