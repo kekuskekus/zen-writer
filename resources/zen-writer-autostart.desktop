@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Zen Writer
+Comment=Start Zen Writer after desktop login
+Exec=/usr/local/bin/zen-writer-launch --autostart --fullscreen
+TryExec=/usr/local/bin/zen-writer-launch
+Icon=accessories-text-editor
+Terminal=false
+StartupNotify=false

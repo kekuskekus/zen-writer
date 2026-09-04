@@ -2,7 +2,7 @@
 Type=Application
 Name=Zen Writer
 Comment=Distraction-free writing for Raspberry Pi
-Exec=/usr/local/bin/zen-writer --fullscreen
+Exec=/usr/local/bin/zen-writer-launch --fullscreen
 Icon=accessories-text-editor
 Terminal=false
 Categories=Office;WordProcessor;

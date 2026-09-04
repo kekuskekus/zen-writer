@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QCommandLineParser>
 #include <QCoreApplication>
+#include <QDebug>
 #include <QIcon>
 
 int main(int argc, char* argv[])
@@ -28,6 +29,8 @@ int main(int argc, char* argv[])
                                  QStringLiteral("[file]"));
     parser.process(application);
 
+    qInfo().noquote() << "Zen Writer" << QCoreApplication::applicationVersion()
+                      << "platform:" << QApplication::platformName();
     MainWindow window;
     const QStringList positional = parser.positionalArguments();
     if (!positional.isEmpty()) {

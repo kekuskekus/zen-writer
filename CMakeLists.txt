@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(zen-writer VERSION 0.2.1 LANGUAGES CXX)
+project(zen-writer VERSION 0.2.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -48,6 +48,10 @@ target_compile_definitions(zen-writer PRIVATE
 )
 
 install(TARGETS zen-writer RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+if(UNIX AND NOT APPLE)
+    install(PROGRAMS scripts/launch-linux.sh
+        DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME zen-writer-launch)
+endif()
 install(FILES resources/zen-writer.desktop
     DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
 )
@@ -66,6 +70,10 @@ if(ZEN_WRITER_BUILD_TESTS)
     add_test(NAME zen-writer-tests COMMAND zen-writer-tests)
 
     if(UNIX AND NOT APPLE)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        add_test(NAME zen-writer-linux-install-tests
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/linux_install_test.py)
+        set_tests_properties(zen-writer-linux-install-tests PROPERTIES TIMEOUT 60)
         add_executable(zen-writer-startup-tests tests/startup_test.cpp)
         target_link_libraries(zen-writer-startup-tests PRIVATE Qt6::Core Qt6::Test)
         target_compile_definitions(zen-writer-startup-tests PRIVATE

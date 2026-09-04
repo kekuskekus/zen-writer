@@ -12,7 +12,11 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build qt6-base-dev libhunspell-dev hunspell-en-us hunspell-ru
+          sudo apt-get install -y cmake ninja-build qt6-base-dev qt6-wayland libhunspell-dev hunspell-en-us hunspell-ru python3 shellcheck desktop-file-utils
+      - name: Check Linux scripts and launchers
+        run: |
+          shellcheck scripts/install-raspberry-pi.sh scripts/launch-linux.sh
+          desktop-file-validate resources/zen-writer.desktop resources/zen-writer-autostart.desktop
       - name: Configure
         run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
       - name: Build
