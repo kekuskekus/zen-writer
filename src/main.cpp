@@ -17,6 +17,9 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("Distraction-free writing for Raspberry Pi"));
     parser.addHelpOption();
     parser.addVersionOption();
+    QCommandLineOption fullscreen(QStringLiteral("fullscreen"),
+                                 QStringLiteral("Start in full screen (the default)."));
+    parser.addOption(fullscreen);
     QCommandLineOption windowed(QStringList {QStringLiteral("w"), QStringLiteral("windowed")},
                                 QStringLiteral("Start in a normal window."));
     parser.addOption(windowed);

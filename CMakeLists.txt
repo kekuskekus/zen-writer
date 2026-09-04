@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(zen-writer VERSION 0.2.0 LANGUAGES CXX)
+project(zen-writer VERSION 0.2.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -64,4 +64,16 @@ if(ZEN_WRITER_BUILD_TESTS)
     target_include_directories(zen-writer-tests PRIVATE src)
     target_link_libraries(zen-writer-tests PRIVATE Qt6::Core Qt6::Test)
     add_test(NAME zen-writer-tests COMMAND zen-writer-tests)
+
+    if(UNIX AND NOT APPLE)
+        add_executable(zen-writer-startup-tests tests/startup_test.cpp)
+        target_link_libraries(zen-writer-startup-tests PRIVATE Qt6::Core Qt6::Test)
+        target_compile_definitions(zen-writer-startup-tests PRIVATE
+            ZEN_WRITER_EXECUTABLE="$<TARGET_FILE:zen-writer>"
+            ZEN_WRITER_DESKTOP_FILE="${CMAKE_CURRENT_SOURCE_DIR}/resources/zen-writer.desktop"
+        )
+        add_dependencies(zen-writer-startup-tests zen-writer)
+        add_test(NAME zen-writer-startup-tests COMMAND zen-writer-startup-tests)
+        set_tests_properties(zen-writer-startup-tests PROPERTIES TIMEOUT 45)
+    endif()
 endif()
